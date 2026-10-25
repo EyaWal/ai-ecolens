@@ -16,3 +16,22 @@ __pycache__/
 !/data/interim/.gitkeep
 /data/processed/*
 !/data/processed/.gitkeep
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated data
+data/raw/
+data/interim/
+data/processed/
+data/warehouse/
+data/analytics/
+
+# macOS
+.DS_Store
