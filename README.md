@@ -14,7 +14,7 @@ It combines public benchmark datasets, Python data processing, DuckDB SQL analyt
 
 ### Dashboard Preview
 
-![AI EcoLens Interactive Dashboard](assets/dashboard-demo.GIF)
+![AI EcoLens Interactive Dashboard](assets/dashboard-demo.gif)
 
 The interactive dashboard includes:
 
