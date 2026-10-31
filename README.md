@@ -12,6 +12,10 @@ It combines public benchmark datasets, Python data processing, DuckDB SQL analyt
 
 **[Explore AI EcoLens on Tableau Public](https://public.tableau.com/views/AIEcoLensAIPerformanceEnergyEfficiency/AIEcoLensOverview)**
 
+### Dashboard Preview
+
+![AI EcoLens Interactive Dashboard](assets/dashboard-demo.GIF)
+
 The interactive dashboard includes:
 
 - **Energy vs. Performance:** Analyze inference energy consumption against model benchmark scores.
