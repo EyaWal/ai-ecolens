@@ -1,29 +1,56 @@
+
 from pathlib import Path
+
+import pandas as pd
+
 from src.ai_ecolens.ingestion.energy import load_energy_data
-
-
-DATA_DIR = Path("data/raw/ai_energy_score")
-
-energy_df = load_energy_data(DATA_DIR)
-
-print("Dataset shape:", energy_df.shape)
-
-print("\nTasks:")
-print(energy_df["task"].value_counts())
-
-print("\nPreview:")
-print(energy_df.head())
-from pathlib import Path
-
 from src.ai_ecolens.ingestion.quality import load_quality_data
 
 
-QUALITY_DIR = Path("data/raw/open_llm_leaderboard")
+def test_load_energy_data(tmp_path: Path):
+    """Test energy ingestion using temporary CSV files."""
 
-quality_df = load_quality_data(QUALITY_DIR)
+    data_dir = tmp_path / "ai_energy_score"
+    data_dir.mkdir()
 
-print("Dataset shape:", quality_df.shape)
-print("Unique models:", quality_df["fullname"].nunique())
+    tasks = [
+        "text_generation",
+        "summarization",
+        "question_answering",
+    ]
 
-print("\nColumns:")
-print(quality_df.columns.tolist())
+    for task in tasks:
+        pd.DataFrame({
+            "model": ["test/model-a"],
+            "total_gpu_energy": [0.01],
+            "energy_score": [5],
+        }).to_csv(data_dir / f"{task}.csv", index=False)
+
+    result = load_energy_data(data_dir)
+
+    assert len(result) == 3
+    assert set(result["task"]) == set(tasks)
+    assert "model" in result.columns
+    assert "total_gpu_energy" in result.columns
+
+
+def test_load_quality_data(tmp_path: Path):
+    """Test loading the quality dataset from a local CSV."""
+
+    data_dir = tmp_path / "open_llm_leaderboard"
+    data_dir.mkdir()
+
+    pd.DataFrame({
+        "fullname": ["test/model-a", "test/model-b"],
+        "Average ⬆️": [40.0, 50.0],
+        "MMLU-PRO": [35.0, 45.0],
+        "IFEval": [60.0, 70.0],
+    }).to_csv(
+        data_dir / "open_llm_leaderboard.csv",
+        index=False,
+    )
+
+    result = load_quality_data(data_dir)
+
+    assert len(result) == 2
+    assert result["fullname"].nunique() == 2
