@@ -34,7 +34,10 @@ SELECT
     a.performance_score,
 
     CASE
-        WHEN a.performance_score IS NULL THEN NULL
+
+        WHEN a.performance_score IS NULL
+            OR a.energy_wh_per_1k IS NULL
+        THEN NULL
 
         WHEN NOT EXISTS (
             SELECT 1

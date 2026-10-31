@@ -6,10 +6,11 @@ SELECT
     a.energy_wh_per_1k,
     a.mmlu_pro_score,
     a.parameters_b
-
 FROM v_model_performance a
 
-WHERE NOT EXISTS (
+WHERE a.energy_wh_per_1k IS NOT NULL
+  AND a.mmlu_pro_score IS NOT NULL
+  AND NOT EXISTS (
 
     SELECT 1
     FROM v_model_performance b

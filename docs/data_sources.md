@@ -63,7 +63,9 @@ The source files contain 91 records across three tasks.
 - `class`: Additional model classification, available for text generation.
 - `test date`: Test date, available for text generation.
 
-The exact unit, measurement boundary, and normalization of `total_gpu_energy` require verification against the original benchmark methodology and the processing code.
+The V1 pipeline uses the `total_gpu_energy` field from the AI Energy Score text-generation dataset. It multiplies the source value by 1,000 to produce the analytical metric `energy_wh_per_1k`.
+
+This metric is labeled GPU Energy (Wh per 1,000 queries), following the source leaderboard's reporting convention. It represents GPU inference energy rather than total datacenter energy consumption.
 
 The three tasks must not be assumed to have equivalent workloads or inference conditions.
 
@@ -107,7 +109,25 @@ The data pipeline follows these stages:
 4. **Storage:** Export the processed dataset and load it into DuckDB.
 5. **SQL Analytics:** Compute analytical metrics and Pareto frontiers.
 6. **Visualization:** Export model-level and benchmark-level datasets for Tableau.
+### Model Matching and Submission Selection
 
+Only the `text_generation` subset of AI Energy Score is retained for the V1 analytical dataset.
+
+Model identifiers are normalized by trimming leading and trailing whitespace and converting text to lowercase.
+
+An inner join is performed between AI Energy Score's `model` column and Open LLM Leaderboard's `fullname` column using the normalized `model_key`.
+
+When multiple leaderboard submissions exist for the same model, the pipeline selects one using the following priority:
+
+1. `float16` precision
+2. `bfloat16` precision
+3. Other or unspecified precisions
+
+Within each precision category, the most recent submission is preferred.
+
+The final dataset retains the selected model SHA, precision, and submission date.
+
+**Limitation:** Matching model names does not guarantee that the energy and quality measurements correspond to identical model revisions or inference configurations.
 ### Generated Outputs
 
 | File | Purpose |
@@ -147,7 +167,11 @@ The analytical dashboard uses an energy indicator labeled:
 
 This represents the pipeline's normalized energy metric, expressed as Wh per 1,000 queries.
 
-The conversion from the original `total_gpu_energy` source field must be verified before the unit can be considered independently validated.
+The pipeline calculates this metric as:
+
+`energy_wh_per_1k = total_gpu_energy * 1000`
+
+The metric follows the GPU energy reporting convention of AI Energy Score. Lower values are preferable.
 
 Lower energy values are treated as preferable.
 
@@ -234,7 +258,8 @@ The following information must still be documented to enable full reproduction f
 
 - [ ] Document exact dataset acquisition and snapshot information.
 - [ ] Verify dataset licenses.
-- [ ] Validate source energy units and conversion formulas.
+- [x] Verify the energy normalization implemented in the pipeline.
+- [ ] Validate energy measurement boundaries and experimental conditions.
 - [ ] Improve model revision matching.
 - [ ] Add automated data-quality checks.
 - [ ] Document experimental hardware and workload conditions.
