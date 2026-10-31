@@ -1,10 +1,11 @@
+
 # Data Sources & Compatibility Audit
 
 ## 1. Overview
 
 AI EcoLens combines public AI inference energy measurements with language model performance benchmarks to explore the trade-offs between model quality and energy consumption.
 
-The V1 analysis uses two data sources:
+The V1 analysis uses two sources:
 
 - **AI Energy Score:** GPU inference energy measurements.
 - **Open LLM Leaderboard:** Language model performance scores and model metadata.
@@ -15,23 +16,43 @@ This project provides an exploratory cross-source comparison, not a controlled e
 
 ## 2. Data Source Inventory
 
-| Source | Dataset | Local Records | Access Method | License |
+| Source | Dataset | Local Records | Acquisition | License |
 |---|---|---:|---|---|
-| AI Energy Score | Question Answering | 18 | Public benchmark CSV | Dataset reuse terms to verify |
-| AI Energy Score | Summarization | 11 | Public benchmark CSV | Dataset reuse terms to verify |
-| AI Energy Score | Text Generation | 62 | Public benchmark CSV | Dataset reuse terms to verify |
-| Open LLM Leaderboard | Model Evaluation Results | 4,576 | Public leaderboard CSV | Dataset reuse terms to verify |
+| AI Energy Score | Question Answering | 18 | Hugging Face Hub | Reuse terms to verify |
+| AI Energy Score | Summarization | 11 | Hugging Face Hub | Reuse terms to verify |
+| AI Energy Score | Text Generation | 62 | Hugging Face Hub | Reuse terms to verify |
+| Open LLM Leaderboard | Model Evaluation Results | 4,576 | Hugging Face Datasets | Reuse terms to verify |
 
-**Source references:**
+### Source References
 
-- [AI Energy Score](https://huggingface.github.io/AIEnergyScore/)
-- [Open LLM Leaderboard](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard)
+**AI Energy Score**
+
+- Project: https://huggingface.github.io/AIEnergyScore/
+- Hugging Face Space: https://huggingface.co/spaces/AIEnergyScore/Leaderboard
+- Repository ID: `AIEnergyScore/Leaderboard`
+- Repository type: `space`
+- Source paths: `data/energy/{task}.csv`
+
+**Open LLM Leaderboard**
+
+- Leaderboard: https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard
+- Dataset: https://huggingface.co/datasets/open-llm-leaderboard/contents
+- Dataset ID: `open-llm-leaderboard/contents`
+- Dataset split: `train`
 
 ML.ENERGY and Artificial Analysis were considered during initial research but are not included in the V1 pipeline.
 
+### Dataset Versioning
+
+The source datasets are retrieved without fixed repository revisions.
+
+The fresh-clone validation reproduced the expected analytical counts, but future upstream changes may affect the results.
+
+Dataset snapshot dates, exact revisions, and reuse licenses remain to be documented.
+
 ## 3. Raw Dataset Structure
 
-The project expects the following local files:
+The pipeline stores source data locally in:
 
 ```text
 data/raw/
@@ -47,7 +68,7 @@ Raw datasets are excluded from Git version control.
 
 ### 3.1 AI Energy Score
 
-The source files contain 91 records across three tasks.
+The downloaded source files contain 91 records across three tasks.
 
 | File | Rows | Available Columns |
 |---|---:|---|
@@ -60,18 +81,20 @@ The source files contain 91 records across three tasks.
 - `model`: Model identifier.
 - `total_gpu_energy`: GPU energy measurement reported by the source.
 - `energy_score`: Energy-efficiency score reported by the source.
-- `class`: Additional model classification, available for text generation.
-- `test date`: Test date, available for text generation.
+- `class`: Additional model classification for text generation.
+- `test date`: Test date for text generation.
 
-The V1 pipeline uses the `total_gpu_energy` field from the AI Energy Score text-generation dataset. It multiplies the source value by 1,000 to produce the analytical metric `energy_wh_per_1k`.
+The V1 analysis uses only the `text_generation` subset.
 
-This metric is labeled GPU Energy (Wh per 1,000 queries), following the source leaderboard's reporting convention. It represents GPU inference energy rather than total datacenter energy consumption.
+The pipeline multiplies `total_gpu_energy` by 1,000 to calculate `energy_wh_per_1k`, following the source leaderboard's reporting convention.
+
+This metric represents GPU inference energy, not total datacenter energy consumption.
 
 The three tasks must not be assumed to have equivalent workloads or inference conditions.
 
 ### 3.2 Open LLM Leaderboard
 
-The local dataset contains **4,576 records and 34 columns**.
+The validated local dataset contains **4,576 records and 34 columns**.
 
 Relevant fields include:
 
@@ -81,6 +104,7 @@ Relevant fields include:
 | `fullname` | Full model name |
 | `Model sha` | Model revision identifier |
 | `#Params (B)` | Number of parameters in billions |
+| `Precision` | Evaluation precision |
 | `Average ⬆️` | Aggregate benchmark score |
 | `IFEval` | Instruction-following evaluation score |
 | `MMLU-PRO` | Knowledge and reasoning evaluation score |
@@ -99,17 +123,36 @@ The `Hub License` field describes model licensing metadata and does not establis
 
 The source-provided `CO₂ cost (kg)` field is not treated as equivalent to AI Energy Score GPU energy measurements.
 
-## 4. Data Processing Pipeline
+## 4. Data Acquisition and Processing Pipeline
 
-The data pipeline follows these stages:
+### 4.1 Data Acquisition
 
-1. **Ingestion:** Load the four source CSV files using Python and pandas.
-2. **Cleaning:** Standardize and validate energy and quality records.
-3. **Model Matching:** Combine compatible model identifiers across sources.
+AI Energy Score data is downloaded with:
+
+```bash
+python -m scripts.download_data
+```
+
+The script retrieves three CSV files from the Hugging Face Space `AIEnergyScore/Leaderboard` and saves them under `data/raw/ai_energy_score/`.
+
+Existing local files are reused.
+
+Open LLM Leaderboard data is loaded by `load_quality_data()`.
+
+If `data/raw/open_llm_leaderboard/open_llm_leaderboard.csv` exists, it is reused. Otherwise, the dataset is downloaded from Hugging Face and saved locally.
+
+Both acquisition methods use the latest available source revision unless a local copy already exists.
+
+### 4.2 Processing Stages
+
+1. **Ingestion:** Load the source CSV files using Python and pandas.
+2. **Cleaning:** Standardize energy and quality records.
+3. **Model Matching:** Join compatible model identifiers across sources.
 4. **Storage:** Export the processed dataset and load it into DuckDB.
 5. **SQL Analytics:** Compute analytical metrics and Pareto frontiers.
 6. **Visualization:** Export model-level and benchmark-level datasets for Tableau.
-### Model Matching and Submission Selection
+
+### 4.3 Model Matching and Submission Selection
 
 Only the `text_generation` subset of AI Energy Score is retained for the V1 analytical dataset.
 
@@ -128,7 +171,8 @@ Within each precision category, the most recent submission is preferred.
 The final dataset retains the selected model SHA, precision, and submission date.
 
 **Limitation:** Matching model names does not guarantee that the energy and quality measurements correspond to identical model revisions or inference configurations.
-### Generated Outputs
+
+### 4.4 Generated Outputs
 
 | File | Purpose |
 |---|---|
@@ -145,13 +189,13 @@ Combining measurements from different benchmark sources introduces important lim
 
 | Criterion | V1 Assessment |
 |---|---|
-| Model identity | Matching implemented; model revisions require further validation |
+| Model identity | Name-based matching; exact revisions require further validation |
 | Evaluation tasks | Different protocols across sources |
 | Inference hardware | Not fully documented in the local source schema |
-| Batch size and precision | Not fully documented |
+| Batch size and precision | Not fully documented across both sources |
 | Prompt and output lengths | Not available in the inspected source columns |
 | Performance metrics | Analyzed separately by benchmark |
-| Energy measurement scope | Requires source-methodology verification |
+| Energy measurement scope | GPU energy only; experimental boundaries require further documentation |
 | Measurement dates | Partially available |
 | Controlled experimental comparison | Not established |
 
@@ -161,19 +205,17 @@ Combining measurements from different benchmark sources introduces important lim
 
 ### Energy Consumption
 
-The analytical dashboard uses an energy indicator labeled:
+The analytical dashboard uses:
 
 `energy_wh_per_1k`
 
-This represents the pipeline's normalized energy metric, expressed as Wh per 1,000 queries.
-
-The pipeline calculates this metric as:
+The pipeline calculates:
 
 `energy_wh_per_1k = total_gpu_energy * 1000`
 
-The metric follows the GPU energy reporting convention of AI Energy Score. Lower values are preferable.
+The metric follows AI Energy Score's GPU energy reporting convention, expressed as Wh per 1,000 queries.
 
-Lower energy values are treated as preferable.
+Lower energy values are preferable.
 
 ### Model Performance
 
@@ -183,7 +225,7 @@ The analysis uses three performance indicators:
 - **IFEval:** Instruction-following.
 - **Average Score:** Aggregate leaderboard performance.
 
-Higher performance values are treated as preferable.
+Higher performance values are preferable.
 
 ### Pareto Optimality
 
@@ -191,7 +233,11 @@ A model is Pareto-optimal when no other evaluated model performs at least as wel
 
 Pareto frontiers are computed separately for each performance indicator.
 
+Models with missing energy or performance values are excluded from Pareto-optimal classification.
+
 ## 7. Validated Results
+
+The following results were reproduced from a fresh Git clone.
 
 | Indicator | Result |
 |---|---:|
@@ -199,7 +245,7 @@ Pareto frontiers are computed separately for each performance indicator.
 | Model-benchmark observations | 114 |
 | Performance indicators | 3 |
 | SQL transformation scripts | 5 |
-| Automated tests passed | 3 |
+| Automated tests passed | 5 |
 
 ### Pareto-Optimal Models
 
@@ -216,33 +262,51 @@ These results are specific to the evaluated dataset and should not be generalize
 ### Requirements
 
 - Python 3.11+
+- Git
+- Internet connection for the initial dataset downloads
 - Dependencies listed in `requirements.txt`
-- Four source CSV files placed in their expected directories
 
-### Run the Pipeline
-
-From the project root:
+### Run from a Fresh Clone
 
 ```bash
+git clone https://github.com/EyaWal/ai-ecolens.git
+cd ai-ecolens
+
+python3 -m venv .venv
+source .venv/bin/activate
+
 python -m pip install -r requirements.txt
+
+python -m scripts.download_data
 python -m scripts.run_pipeline
 python -m scripts.run_sql
+
 python -m pytest -q
 ```
 
-The current pipeline has been successfully executed and tested in the development environment.
+### Fresh-Clone Validation
 
-### Current Reproducibility Limitations
+The pipeline was successfully executed from a fresh Git clone.
 
-The raw datasets are not committed to Git.
+Validation confirmed:
 
-The following information must still be documented to enable full reproduction from a fresh clone:
+- Successful source dataset acquisition.
+- Successful Python processing and DuckDB database creation.
+- Execution of all five SQL transformation scripts.
+- Export of both Tableau-ready datasets.
+- Reproduction of 38 matched models and 114 model-benchmark observations.
+- Reproduction of the expected Pareto-optimal counts.
+- Five automated tests passing.
 
-- Exact download locations for the four CSV files
-- Dataset snapshot or extraction dates
-- Dataset licenses and redistribution conditions
-- Any manual preparation performed before ingestion
-- Verification of energy measurement units and normalization
+### Remaining Reproducibility Limitations
+
+Raw datasets are excluded from Git and downloaded from public sources.
+
+The current implementation does not pin source dataset revisions or exact dependency versions.
+
+As a result, future downloads may produce different data and analytical results.
+
+Dataset licenses, extraction timestamps, and exact upstream revisions remain to be documented.
 
 ## 9. Scientific Limitations
 
@@ -256,17 +320,20 @@ The following information must still be documented to enable full reproduction f
 
 ## 10. Future Improvements
 
-- [ ] Document exact dataset acquisition and snapshot information.
-- [ ] Verify dataset licenses.
+- [x] Document source dataset acquisition methods.
+- [x] Automate source dataset acquisition.
 - [x] Verify the energy normalization implemented in the pipeline.
-- [ ] Validate energy measurement boundaries and experimental conditions.
+- [x] Validate pipeline execution from a fresh Git clone.
+- [x] Implement automated ingestion tests independent of raw datasets.
+- [ ] Pin source dataset revisions and record extraction timestamps.
+- [ ] Verify dataset licenses and redistribution conditions.
 - [ ] Improve model revision matching.
 - [ ] Add automated data-quality checks.
 - [ ] Document experimental hardware and workload conditions.
-- [ ] Automate dataset acquisition where permitted.
+- [ ] Validate energy measurement boundaries and experimental conditions.
 - [ ] Investigate inference cost and carbon estimation using explicit assumptions.
 
 ---
 
 **Project:** AI EcoLens  
-**Status:** V1 — Analytics pipeline and Tableau dashboard published.
+**Status:** V1 — Analytics pipeline reproduced and Tableau dashboard published.

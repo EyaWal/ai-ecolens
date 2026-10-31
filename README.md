@@ -1,3 +1,4 @@
+
 # AI EcoLens 🌱
 
 **AI Model Performance & Energy Efficiency Analytics**
@@ -38,17 +39,21 @@ The interactive dashboard includes:
 
 **[AI Energy Score](https://huggingface.github.io/AIEnergyScore/)**
 
-Energy consumption measurements for AI model inference.
+GPU inference energy measurements retrieved from the Hugging Face Space `AIEnergyScore/Leaderboard`.
 
 **[Open LLM Leaderboard](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard)**
 
-Language-model performance evaluation results.
+Language-model performance evaluations retrieved from the Hugging Face dataset `open-llm-leaderboard/contents`.
 
-The current dataset contains **38 matched models**.
+The current analytical dataset contains **38 matched models** and **114 model-benchmark observations**.
 
-Energy and performance measurements come from different evaluation protocols. Results are therefore intended for exploratory comparison rather than controlled experimental benchmarking.
+Source CSV files are stored locally under `data/raw/` and excluded from Git version control.
 
-Source CSV files are stored locally under `data/raw/` and are not included in the Git repository. Their acquisition and preparation procedures must be documented separately.
+AI Energy Score files are downloaded using `scripts/download_data.py`. Open LLM Leaderboard evaluations are downloaded automatically during pipeline execution when no local CSV is available.
+
+Energy and performance measurements originate from different evaluation protocols. Results are intended for exploratory comparison rather than controlled experimental benchmarking.
+
+For additional details, see [Data Sources & Compatibility Audit](docs/data_sources.md).
 
 ## 🏗️ Data Architecture
 
@@ -85,6 +90,8 @@ AI Energy Score        Open LLM Leaderboard
 
 ```text
 ai-ecolens/
+├── assets/
+│   └── dashboard-demo.gif
 ├── data/
 │   ├── raw/              # Source datasets (Git-ignored)
 │   ├── interim/          # Intermediate data
@@ -97,6 +104,7 @@ ai-ecolens/
 ├── notebooks/
 │   └── 01_energy_data_exploration.ipynb
 ├── scripts/
+│   ├── download_data.py
 │   ├── run_pipeline.py
 │   ├── run_sql.py
 │   └── check_database.py
@@ -123,34 +131,58 @@ ai-ecolens/
 
 | Metric | Description |
 |---|---|
-| GPU Energy (Wh/1K queries) | Normalized GPU energy consumption |
+| GPU Energy (Wh/1K queries) | GPU inference energy indicator following AI Energy Score's reporting convention |
 | MMLU-Pro | Knowledge and reasoning benchmark |
 | IFEval | Instruction-following benchmark |
-| Average Score | Aggregate performance metric |
+| Average Score | Aggregate leaderboard performance metric |
 | Model Size (B) | Number of parameters in billions |
 | Pareto Optimality | Non-dominated energy-performance trade-off |
+
+### Energy Normalization
+
+The pipeline calculates:
+
+`energy_wh_per_1k = total_gpu_energy * 1000`
+
+The metric follows AI Energy Score's GPU energy reporting convention and does not represent total datacenter energy consumption.
+
+### Model Matching
+
+Model identifiers are normalized by trimming whitespace and converting text to lowercase.
+
+The pipeline matches AI Energy Score's `model` field with Open LLM Leaderboard's `fullname` field.
+
+When multiple quality evaluations exist, the pipeline prioritizes:
+
+1. `float16` precision
+2. `bfloat16` precision
+3. Other or unspecified precisions
+
+Within the same precision priority, the most recent submission is preferred.
+
+Name-based matching does not guarantee identical model revisions or inference configurations across sources.
 
 ### Pareto Frontier Analysis
 
 The analysis considers two competing objectives:
 
-- **Minimize** inference energy consumption.
+- **Minimize** inference GPU energy consumption.
 - **Maximize** model performance.
 
 A model is Pareto-optimal when no other model in the comparison set performs at least as well on both objectives and strictly better on at least one.
 
-Pareto analysis is performed separately for the available performance benchmarks.
+Pareto analysis is performed separately for MMLU-Pro, IFEval, and Average Score.
 
 ## 📈 Key Results
 
-The validated local pipeline produced:
+The validated pipeline produced:
 
 | Indicator | Result |
 |---|---:|
 | Matched AI models | 38 |
 | Model-benchmark observations | 114 |
 | SQL transformation scripts | 5 |
-| Automated tests passed | 3/3 |
+| Automated tests passed | 5/5 |
 
 ### Pareto-Optimal Models by Benchmark
 
@@ -170,6 +202,7 @@ Pareto optimality is relative to the evaluated models and metrics; it does not e
 |---|---|
 | Programming | Python |
 | Data Processing | pandas, NumPy |
+| Data Acquisition | Hugging Face Hub, Hugging Face Datasets |
 | Analytical Database | DuckDB |
 | Data Transformations | SQL |
 | Data Exploration | Jupyter Notebook |
@@ -183,7 +216,7 @@ Pareto optimality is relative to the evaluated models and metrics; it does not e
 
 - Python 3.11+
 - Git
-- Source datasets placed in the expected local directories
+- Internet connection for the initial dataset downloads
 
 ### 1. Clone the repository
 
@@ -205,59 +238,66 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### 4. Prepare the source datasets
+### 4. Download AI Energy Score data
 
-The pipeline expects the following local files:
-
-```text
-data/raw/
-├── ai_energy_score/
-│   ├── question_answering.csv
-│   ├── summarization.csv
-│   └── text_generation.csv
-└── open_llm_leaderboard/
-    └── open_llm_leaderboard.csv
+```bash
+python -m scripts.download_data
 ```
 
-These files are not distributed in the Git repository. The source download and preparation instructions are not yet fully documented.
+This downloads three CSV files into `data/raw/ai_energy_score/`:
 
-### 5. Run the data pipeline
+- `text_generation.csv`
+- `summarization.csv`
+- `question_answering.csv`
+
+The Open LLM Leaderboard dataset is downloaded automatically during pipeline execution if no local copy exists.
+
+### 5. Run the pipeline
 
 ```bash
 python -m scripts.run_pipeline
-```
-
-This generates the processed dataset and loads it into a local DuckDB database.
-
-### 6. Run SQL analytics
-
-```bash
 python -m scripts.run_sql
 ```
 
-This executes five SQL scripts and generates:
+The pipeline creates:
 
 ```text
+data/processed/energy_quality_comparison.csv
+data/warehouse/ai_ecolens.duckdb
 data/analytics/tableau_model_metrics.csv
 data/analytics/tableau_benchmark_metrics.csv
 ```
 
-### 7. Run automated tests
+### 6. Run automated tests
 
 ```bash
 python -m pytest -q
 ```
 
-**Current local validation:** 3 tests passed. Both pipeline execution commands completed successfully.
+The test suite uses temporary sample data and does not require downloading the source datasets.
+
+### Reproducibility Validation
+
+The pipeline was successfully reproduced from a fresh Git clone with the following results:
+
+- 38 matched models
+- 114 model-benchmark observations
+- 10 Pareto-optimal models for MMLU-Pro
+- 9 Pareto-optimal models for IFEval
+- 15 Pareto-optimal models for Average Score
+- 5 automated tests passed
+
+**Note:** Source dataset revisions and exact dependency versions are not pinned. Future upstream updates may change the results.
 
 ## ⚠️ Limitations
 
-- Energy and quality benchmarks may use different hardware, workloads, and evaluation conditions.
-- Model matching across independent datasets may introduce uncertainty.
+- Energy and performance measurements originate from different benchmark protocols.
+- Model matching across independent datasets does not guarantee identical model revisions.
+- Hardware, workload, precision, and evaluation configurations may differ.
 - GPU energy measurements do not represent total environmental or lifecycle impact.
 - Pareto results depend on the available models and selected metrics.
-- Source datasets are not automatically downloaded by the current pipeline.
-- Full reproducibility from a fresh clone requires additional source-data documentation.
+- Source dataset revisions are not pinned, limiting exact long-term reproducibility.
+- The analysis should not be interpreted as a definitive environmental ranking of AI models.
 
 ## 🗺️ Roadmap
 
@@ -268,17 +308,22 @@ python -m pytest -q
 - [x] Compute benchmark-specific Pareto frontiers
 - [x] Export Tableau-ready datasets
 - [x] Publish interactive Tableau dashboard
-- [x] Validate existing automated tests
-- [ ] Document source dataset acquisition
-- [ ] Expand automated data validation
-- [ ] Improve reproducibility from a fresh clone
+- [x] Automate source dataset acquisition
+- [x] Document dataset sources and processing
+- [x] Validate the pipeline from a fresh Git clone
+- [x] Run automated tests successfully (5/5)
+- [ ] Pin dataset revisions for long-term reproducibility
+- [ ] Expand automated data-quality checks
+- [ ] Improve model revision matching
 - [ ] Investigate inference cost and carbon estimation
 - [ ] Explore a use-case-based model selection simulator
 
 ## 📌 Project Status
 
-**V1 — Interactive Analytics Dashboard Published**
+**V1 — Interactive Analytics Dashboard Published & Pipeline Reproduced**
 
-The current implementation includes a working local data pipeline, SQL analytics, benchmark-specific Pareto analysis, and a published Tableau dashboard.
+AI EcoLens includes a working Python data pipeline, DuckDB SQL analytics, benchmark-specific Pareto analysis, and a published interactive Tableau dashboard.
 
-Future work will focus on reproducibility, broader benchmark coverage, and additional decision-support capabilities.
+The complete pipeline has been successfully executed from a fresh Git clone.
+
+Future work will focus on stronger scientific comparability, dataset versioning, and additional decision-support capabilities.
